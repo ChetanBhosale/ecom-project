@@ -1,69 +1,129 @@
-import { NextFunction,Request,Response } from "express";
-import { SignUpSchema, loginSchema } from "../schemas/user";
+import {  Request, Response, Express } from "express";
+import { SignUpSchema, loginSchema, otpEmailValidaton } from "../schemas/auth";
 import { prisma } from "../db/db";
 import { BadRequestException } from "../exceptions/bad-request";
 import { ErrorCode } from "../exceptions/root";
-import { hashSync } from "bcryptjs";
-import jwt from 'jsonwebtoken'
+import { compareSync, hashSync } from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../secreat";
-import { MailSender } from "../services/node-email";
+import sendMail from "../services/node-email";
+import { MySession } from "..";
 
-export const signup = async(req:Request,res:Response,next:NextFunction) => {
-    const data = SignUpSchema.parse(req.body)
-    const {email,password,fname,lname} = data
+export const signup = async (
+  req: Request,
+  res: Response,
+) => {
+  const data = SignUpSchema.parse(req.body);
+  const { email, password, otp } = data;
 
-    let User = await prisma.user.findFirst({where: {email : req.body.email}})
+  let User = await prisma.user.findFirst({ where: { email: req.body.email } });
 
-    if(User){
-        new BadRequestException("User already exists",ErrorCode.USER_ALREADY_EXITS)
-    }
+  if (User) {
+    throw new BadRequestException(
+      "User already exists",
+      ErrorCode.USER_ALREADY_EXITS
+    );
+  }
 
-    User = await prisma.user.create({
-        data : {
-            email,
-            password : hashSync(password,10),
-            fname,
-            lname
-        } as any
-    })
+  const storedOtps = (req.session as MySession).otps || [];
 
-    // await MailSender(email,'Welcome to the system','welcome body')
-    // work on mailer sender and found how to make sure it should be sent to geniune user
+  const matchedOtp = storedOtps.find((storedOtp) => {
+    return (
+      email === storedOtp.email &&
+      otp === storedOtp.value &&
+      Date.now() <= storedOtp.expiresAt
+    );
+  });
 
-    // tommorw
-        // auth full
-        // model 
+  if (!matchedOtp) {
+    throw new BadRequestException("Otp is incorrect!", ErrorCode.OTP_IS_INCORRECT);
+  }
 
+  User = await prisma.user.create({
+    data: {
+      email,
+      password: hashSync(password, 10),
+    } as any,
+  });
 
-    res.status(201).json({
-        success : true,
-        data : User
-    })
-}
+  res.status(201).json({
+    success: true,
+    data: User,
+  });
+};
 
+export const sendOtp = async (
+  req: Request,
+  res: Response,
+) => {
+  const { email } = otpEmailValidaton.parse(req.body);
 
+  let user = await prisma.user.findUnique({where : {email}})
 
-export const login = async(req:Request,res:Response,next : NextFunction) => {
-    loginSchema.parse(req.body)
-    const {email,password} = req.body
+  if(user){
+    throw new BadRequestException('User already exists',ErrorCode.USER_ALREADY_EXITS)
+  }
 
-    const user = await prisma.user.findUnique({where : {email}})
+  let randomNumber: number = 0;
+  while (randomNumber <= 99999) {
+    randomNumber = Math.floor(100000 + Math.random() * 900000);
+  }
+  
+  console.log(randomNumber)
 
-    if(!user){
-        new BadRequestException('User not found!',ErrorCode.USER_NOT_FOUND) 
+  const newOtp = {
+    email,
+    value: randomNumber.toString(),
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  };
+  (req.session as MySession).otps = (req.session as MySession).otps || [];
+  (req.session as MySession).otps.push(newOtp);
+
+  await sendMail(email, "Sent Otp", randomNumber.toString() + "is the otp!");
+
+  res.status(201).json({
+    success: true,
+    message: "otp sent successfully!",
+  });
+};
+
+export const login = async (
+  req: Request,
+  res: Response,
+) => {
+  const { email, password } = loginSchema.parse(req.body);
+
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) {
+    throw new BadRequestException("User not found!", ErrorCode.USER_NOT_FOUND);
+  } else {
+    const checkPass = compareSync(password, user.password);
+
+    if (!checkPass) {
+      throw new BadRequestException(
+        "Password doest match",
+        ErrorCode.INCORRECT_PASSWORD
+      );
     }
 
     const options = {
-        id : user?.id,             
-        role : user?.role
-    }
+      id: user?.id,
+      role: user?.role,
+    };
 
-    const token = jwt.sign(options,JWT_SECRET!)
+    const token = jwt.sign(options, JWT_SECRET!);
 
-    res.cookie("token",token,{ expires: new Date(Date.now() + 900000),   httpOnly: true }).status(201).json({
-        success : true,
-        data : user,
-        token : token
-    })
-    
-}
+    res
+      .cookie("token", token, {
+        expires: new Date(Date.now() + 900000),
+        httpOnly: true,
+      })
+      .status(201)
+      .json({
+        success: true,
+        data: user,
+        token: token,
+      });
+  }
+};

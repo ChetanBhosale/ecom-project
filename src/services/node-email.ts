@@ -1,30 +1,35 @@
-import nodemailer from 'nodemailer'
-import { InternalException } from '../exceptions/internal-exception'
-import { ErrorCode } from '../exceptions/root'
+import { BadRequestException } from "../exceptions/bad-request";
+import { ErrorCode } from "../exceptions/root";
+
+const nodemailer = require("nodemailer");
 
 
-let transport = nodemailer.createTransport({
-    service : 'gmail',
-    auth : {
-        user : 'ecomassist4u@gmail.com',
-        pass : '1234@Chetan'
+
+const mailSender = async (email:string, title:string, body:string) => {
+    try{
+            let transporter = nodemailer.createTransport({
+                host:process.env.MAIL_HOST,
+                auth:{
+                    user: process.env.MAIL_USER,
+                    pass: process.env.MAIL_PASS,
+                }
+            })
+
+
+            let info = await transporter.sendMail({
+                from: 'StudyNotion || Horror',
+                to:`${email}`,
+                subject: `${title}`,
+                html: `${body}`,
+            })
+            return info;
     }
-})
-
-export const MailSender = async(email:string,subject:string,body:string) => {
-    let mailOption = {
-        from : 'ecomassist4u@gmail.com',
-        to : email,
-        subject : subject,
-        text : body
+    catch(error) {
+        new BadRequestException('Server Error', ErrorCode.INTERNAL_EXCEPTION)
     }
-
-    transport.sendMail(mailOption,(error) => {
-        if(error){
-           return new InternalException('Email sender Error',ErrorCode.INTERNAL_EXCEPTION,error)
-        }else{
-            console.log('email sent!')
-        }
-        
-    })
 }
+
+
+
+
+export default mailSender
