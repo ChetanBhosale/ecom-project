@@ -2,9 +2,10 @@ import express,{ Express } from "express";
 import { errorMiddleware } from "./middlewares/errors";
 import {PORT} from './secreat'
 import session from 'express-session'
+import cookieParser from 'cookie-parser'
 const app : Express = express()
 
-
+app.use(cookieParser())
 app.use(express.json())
 app.use(session({
     secret : process.env.SESSION_KEY!,
@@ -25,7 +26,6 @@ export interface MySession extends session.Session {
 
 
 import root from './routes/root'
-import { Session } from "inspector";
 
 app.use('/api',root)
 

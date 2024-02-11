@@ -14,8 +14,10 @@ import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../secreat";
 import sendMail from "../services/node-email";
 import { MySession } from "..";
+import { NotFoundException } from "../exceptions/not-found";
 
 export const signup = async (req: Request, res: Response) => {
+
   const data = SignUpSchema.parse(req.body);
   const { email, password, otp } = data;
 
@@ -62,15 +64,6 @@ export const signup = async (req: Request, res: Response) => {
 export const sendOtp = async (req: Request, res: Response) => {
   const { email } = otpEmailValidaton.parse(req.body);
 
-  let user = await prisma.user.findUnique({ where: { email } });
-
-  if (user) {
-    throw new BadRequestException(
-      "User already exists",
-      ErrorCode.USER_ALREADY_EXITS
-    );
-  }
-
   let randomNumber: number = 0;
   while (randomNumber <= 99999) {
     randomNumber = Math.floor(100000 + Math.random() * 900000);
@@ -86,6 +79,8 @@ export const sendOtp = async (req: Request, res: Response) => {
   (req.session as MySession).otps = (req.session as MySession).otps || [];
   (req.session as MySession).otps.push(newOtp);
 
+  
+
   await sendMail(email, "Sent Otp", randomNumber.toString() + "is the otp!");
 
   res.status(201).json({
@@ -100,7 +95,7 @@ export const login = async (req: Request, res: Response) => {
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {
-    throw new BadRequestException("User not found!", ErrorCode.USER_NOT_FOUND);
+    throw new NotFoundException("User not found!", ErrorCode.USER_NOT_FOUND);
   } else {
     const checkPass = compareSync(password, user.password);
 
@@ -134,16 +129,24 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const changePassword = async (req: Request, res: Response) => {
+
+
+    const data = req.session as MySession 
+
   const { email, oldPassword, newPassword, otp } = changePasswordSchema.parse(
     req.body
   );
 
-  let user = await prisma.user.findUnique({ where: { email } });
+
+  let user = await prisma.user.findFirst({ where: { email } });
 
   if (!user) {
-    throw new BadRequestException("User not found!", ErrorCode.USER_NOT_FOUND);
+    throw new NotFoundException("User not found!", ErrorCode.USER_NOT_FOUND);
   } else {
-    const storedOtps = (req.session as MySession).otps || [];
+    
+    const storedOtps = (req.session as MySession).otps
+
+    console.log(storedOtps)
 
     const matchedOtp = storedOtps.find((storedOtp) => {
       return (
@@ -152,6 +155,8 @@ export const changePassword = async (req: Request, res: Response) => {
         Date.now() <= storedOtp.expiresAt
       );
     });
+    
+    console.log(matchedOtp)
 
     if (!matchedOtp) {
       throw new BadRequestException(
@@ -164,17 +169,16 @@ export const changePassword = async (req: Request, res: Response) => {
 
     if (!checkPass) {
       throw new BadRequestException(
-        "Password doest match",
+        "old password is incorrect",
         ErrorCode.INCORRECT_PASSWORD
       );
     }
 
-    user.password = newPassword;
-
     let data = await prisma.user.update({
       where: { email },
       data: {
-        ...user,
+        email : user.email,
+        password : hashSync(newPassword,10)   
       },
     });
 
@@ -192,7 +196,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
   let user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {
-    throw new BadRequestException("User not found!", ErrorCode.USER_NOT_FOUND);
+    throw new NotFoundException("User not found!", ErrorCode.USER_NOT_FOUND);
   } else {
     const storedOtps = (req.session as MySession).otps || [];
 
@@ -211,12 +215,10 @@ export const forgotPassword = async (req: Request, res: Response) => {
       );
     }
 
-    user.password = newPassword;
-
     let data = await prisma.user.update({
       where: { email },
       data: {
-        ...user,
+        password : hashSync(newPassword,10)
       },
     });
 
