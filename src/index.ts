@@ -18,5 +18,5 @@ app.use('/api',root)
 app.use(errorMiddleware)
 
 app.listen(PORT,() => {
-    console.log('App working!')
+    console.log(`App Working on PORT ${PORT}`)
 })

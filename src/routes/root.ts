@@ -10,4 +10,4 @@ rootRouter.use('/auth',authRouter)
 
 
 
-export default Router;
+export default rootRouter;

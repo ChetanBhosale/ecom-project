@@ -5,4 +5,4 @@ const authRouter : Router = Router()
 
 authRouter.post('/signup',errorHandler(signup))
 
-export default Router;
+export default authRouter;
